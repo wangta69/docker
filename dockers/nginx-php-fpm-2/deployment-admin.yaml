@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: administration-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: administration
+  template:
+    metadata:
+      labels:
+        app: administration
+    spec:
+      containers:
+        - name: administration
+          image: <username>/<project-name>:latest
+          envFrom:
+            - secretRef:
+              name: administration

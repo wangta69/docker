@@ -1,0 +1,25 @@
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: python-sample-deployment
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: python-sample-app
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: python-sample-app
+    spec:
+      containers:
+      - name: python-sample
+        image: dockerimage주소:태그
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 500m
+            memory: 200Mi
+        ports:
+        - containerPort: 8000

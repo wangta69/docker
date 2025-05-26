@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php
+  labels:
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: php
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: php
+        tier: backend
+    spec:
+      volumes:
+      - name: dir
+        persistentVolumeClaim:
+          claimName: dir
+      containers:
+      - name: php
+        image: woosungchoi/fpm-alpine:latest
+        volumeMounts:
+        - name: dir
+          mountPath: /dir
+      initContainers:
+      - name: install
+        image: busybox
+        volumeMounts:
+        - name: dir
+          mountPath: /dir
+        command:
+        - git 
+        - "clone"
+        - https://github.com/gnuboard/gnuboard5
+        - "/dir/"

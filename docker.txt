@@ -1,0 +1,22 @@
+https://www.youtube.com/watch?v=3vAf3icAAfs
+docker 
+간단한 웹서버
+
+docker.desktop 다운로드
+
+
+쿠버네티스 <- 도커 <- 컨테이너 <- pod
+
+
+frontend-nginx.yaml 작성
+kubectl create -f frontend-nginx.yaml
+
+
+kubectl get pods // 만들어진 pods를 리스트
+
+
+kubectl logs frontend // frontend의 띄워진 프로세스
+
+kubectl port-forward frontend 8888:80 : 8888dmf 80으로 포터 포워딩
+
+url 창에 : http://127.0.0.1:8888/ 하면 현재 frontend가 동작
