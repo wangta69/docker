@@ -1,0 +1,1 @@
+https://kubernetes.io/ko/docs/concepts/workloads/controllers/statefulset/
