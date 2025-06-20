@@ -22,7 +22,7 @@ spec:
           mountPath: /home/user
         env:
         - name: SFTP_USERS
-          value: "user:password:1001"  # 사용자, 비밀번호, UID 설정
+          value: "user:password:1001"  # 사용자:비밀번호[:UID[:GID]] 설정 
       volumes:
       - name: sftp-data
         persistentVolumeClaim:

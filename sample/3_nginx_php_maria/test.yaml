@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-files-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sftp-service
+spec:
+  selector:
+    app: nginx-phpfpm
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 22
+      targetPort: 22
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-phpfpm-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-phpfpm
+  template:
+    metadata:
+      labels:
+        app: nginx-phpfpm
+    spec:
+      volumes:
+        - name: shared-files
+          # emptyDir: {} : 이렇게 하면 파드가 삭제될때 함께 삭제됨
+          persistentVolumeClaim: # 따라서  pvc를 이용하여 처리함
+            claimName: shared-files-pvc
+
+        - name: nginx-config-volume
+          configMap:
+            name: nginx-config
+
+        - name: home-dir
+          emptyDir: {}
+
+      initContainers:
+        - name: init-symlink
+          image: busybox
+          command: ['sh', '-c', 'rm -rf /home/user && ln -s /usr/share/nginx/html /home/user']
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+            - name: home-dir
+              mountPath: /home/user
+
+      containers:
+        - name: phpfpm82
+          image: php-8-2-fpm:1.0.0
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+
+        - name: nginx
+          image: nginx:1.27.5
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/conf.d
+
+        - name: sftp
+          image: atmoz/sftp:latest
+          ports:
+            - containerPort: 22
+              name: sftp
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+            - name: home-dir
+              mountPath: /home/user
+          env:
+            - name: SFTP_USERS
+              value: "user:password:1001"

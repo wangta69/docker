@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-files-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sshd-config
+data:
+  sshd_config: |
+    Port 2222
+    PermitRootLogin no
+    PasswordAuthentication yes
+    Subsystem sftp /usr/lib/ssh/sftp-server
+    AllowUsers user1 pondol
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sftp-ssh-service
+spec:
+  selector:
+    app: nginx-phpfpm
+  type: NodePort
+  ports:
+    - name: sftp
+      protocol: TCP
+      port: 22
+      targetPort: 22
+      nodePort: 30222
+    - name: ssh
+      protocol: TCP
+      port: 2222
+      targetPort: 2222
+      nodePort: 30223
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-phpfpm-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-phpfpm
+  template:
+    metadata:
+      labels:
+        app: nginx-phpfpm
+    spec:
+      volumes:
+        - name: shared-files
+          persistentVolumeClaim:
+            claimName: shared-files-pvc
+        - name: nginx-config-volume
+          configMap:
+            name: nginx-config
+        - name: sshd-config
+          configMap:
+            name: sshd-config
+
+      initContainers:
+        - name: init-users
+          image: ubuntu
+          command:
+            - sh
+            - -c
+            - |
+              apt update && apt install -y openssh-server && \
+              useradd -m -u 1001 user1 && echo "user1:password1" | chpasswd && \
+              useradd -m -u 1002 pondol && echo "pondol:password2" | chpasswd && \
+              mkdir -p /home/user1 /home/pondol && \
+              chown -R 1001:1001 /home/user1 && \
+              chown -R 1002:1002 /home/pondol
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+
+      containers:
+        - name: phpfpm82
+          image: php-8-2-fpm:1.0.0
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+
+        - name: nginx
+          image: nginx:1.27.5
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/conf.d
+
+        - name: sftp
+          image: atmoz/sftp:latest
+          ports:
+            - containerPort: 22
+              name: sftp
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+          args:
+            - "user1:password1:1001::/home/user1"
+            - "pondol:password2:1002::/home/pondol"
+
+        - name: ssh
+          image: linuxserver/openssh-server
+          ports:
+            - containerPort: 2222
+              name: ssh
+          env:
+            - name: PASSWORD_ACCESS
+              value: "true"
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+            - name: sshd-config
+              mountPath: /etc/ssh/sshd_config
+              subPath: sshd_config

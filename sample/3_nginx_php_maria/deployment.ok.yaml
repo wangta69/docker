@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-files-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sftp-ssh-service
+spec:
+  selector:
+    app: nginx-phpfpm
+  type: NodePort
+  ports:
+    - name: sftp
+      protocol: TCP
+      port: 22
+      targetPort: 22
+      nodePort: 30222
+    - name: ssh
+      protocol: TCP
+      port: 2222
+      targetPort: 2222
+      nodePort: 30223
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-phpfpm-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-phpfpm
+  template:
+    metadata:
+      labels:
+        app: nginx-phpfpm
+    spec:
+      volumes:
+        - name: shared-files
+          persistentVolumeClaim:
+            claimName: shared-files-pvc
+        - name: nginx-config-volume
+          configMap:
+            name: nginx-config
+
+      initContainers:
+        - name: init-symlink
+          image: busybox
+          command: ['sh', '-c', 'rm -rf /home/user && ln -s /usr/share/nginx/html /home/user']
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+
+      containers:
+        - name: phpfpm82
+          image: php-8-2-fpm:1.0.0
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+
+        - name: nginx
+          image: nginx:1.27.5
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/conf.d
+
+        - name: sftp
+          image: atmoz/sftp:latest
+          ports:
+            - containerPort: 22
+              name: sftp
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
+            - name: shared-files
+              mountPath: /home/user
+          args: ["user:password:1001"]
+
+        - name: ssh
+          image: linuxserver/openssh-server
+          env:
+            - name: PUID
+              value: "1001"
+            - name: PGID
+              value: "1001"
+            - name: TZ
+              value: "Asia/Seoul"
+            - name: PASSWORD_ACCESS
+              value: "true"
+            - name: USER_PASSWORD
+              value: "password"
+            - name: USER_NAME
+              value: "user"
+          ports:
+            - containerPort: 2222
+              name: ssh
+          volumeMounts:
+            - name: shared-files
+              mountPath: /usr/share/nginx/html
