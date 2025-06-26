@@ -71,7 +71,7 @@ spec:
           imagePullPolicy: Never
           volumeMounts:
             - name: shared-files
-              mountPath: /home  # 필요 시 변경 가능
+              mountPath: /home
 
         - name: nginx
           image: nginx:1.27.5
@@ -98,7 +98,8 @@ spec:
             - "pondol:password2:1002::/home/pondol"
 
         - name: ssh
-          image: ssh-multiuser:latest
+          # image: ssh-multiuser:latest
+          image: pondol/ssh-multiuser:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 2222
