@@ -18,11 +18,16 @@ spec:
     app: nginx-phpfpm
   type: NodePort
   ports:
-    - name: ssh
+    - name: sftp
       protocol: TCP
       port: 22
       targetPort: 22
       nodePort: 30222
+    - name: ssh
+      protocol: TCP
+      port: 2222
+      targetPort: 2222
+      nodePort: 30223
     - name: http
       protocol: TCP
       port: 80
@@ -43,20 +48,22 @@ spec:
       labels:
         app: nginx-phpfpm
     spec:
-      securityContext:
-        fsGroup: 1000
-        runAsUser: 0
       volumes:
         - name: shared-files
           persistentVolumeClaim:
             claimName: shared-files-pvc
-        - name: nginx-main-config
-          configMap:
-            name: nginx-main-config
         - name: nginx-config-volume
           configMap:
             name: nginx-config
+
       containers:
+        - name: phpfpm82
+          image: php-8-2-fpm:latest
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: shared-files
+              mountPath: /var/www/html
+
         - name: nginx
           image: nginx:1.27.5
           ports:
@@ -64,24 +71,29 @@ spec:
               name: http
           volumeMounts:
             - name: shared-files
-              mountPath: /home
-            - name: nginx-main-config
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
+              mountPath: /var/www/html
             - name: nginx-config-volume
               mountPath: /etc/nginx/conf.d
 
-        - name: ssh
-          image: pondol/ssh-sftp-custom:latest
+        - name: sftp
+          image: atmoz/sftp:latest
           ports:
             - containerPort: 22
+              name: sftp
+          args:
+
+            - user1:password1:1001  # 사용자:비밀번호[:UID[:GID]] 설정
+            - pondol:password2:1002
+          volumeMounts:
+            - name: shared-files
+              mountPath: /home
+        - name: ssh
+          image: pondol/ssh-multiuser:1.0.7  # Dockerfile에서 빌드한 이미지
+          # imagePullPolicy: Never
+          ports:
+            - containerPort: 2222
               name: ssh
           volumeMounts:
             - name: shared-files
-              mountPath: /home
-        - name: phpfpm82
-          image: php-8-2-fpm:latest
-          imagePullPolicy: Never
-          volumeMounts:
-            - name: shared-files
-              mountPath: /home
+              # mountPath: /home
+              mountPath: /mnt/shared

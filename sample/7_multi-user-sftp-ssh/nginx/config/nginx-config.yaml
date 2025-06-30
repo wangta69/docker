@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  default.conf: | #키명 = 파일명, |은 밸류가 멀티라인이라는 뜻
+    server {
+      listen       80;
+      listen  [::]:80;
+      server_name  localhost;
+
+      access_log  /var/log/nginx/host.access.log;
+      error_log  /var/log/nginx/host.error.log;
+
+      root   /home/pondol/example-app/public;
+      index   index.php index.html index.htm;
+
+      location / {
+        try_files $uri $uri/ /index.php?$query_string;
+      }
+
+      location ~ \.php$ {
+        
+        fastcgi_pass   127.0.0.1:9000;
+        fastcgi_param REQUEST_METHOD $request_method;
+        # fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include        fastcgi_params;
+      }
+    }
