@@ -1,0 +1,153 @@
+# --------------------------------------------------------
+# PVC: 공유 볼륨 (/home)
+# --------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-home-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+# --------------------------------------------------------
+# PHP-FPM Deployment + Service (포트 9000)
+# --------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-fpm-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: php-fpm
+  template:
+    metadata:
+      labels:
+        app: php-fpm
+    spec:
+      containers:
+        - name: php-fpm
+          image: php:8.2-fpm
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - name: shared-home
+              mountPath: /home
+      volumes:
+        - name: shared-home
+          persistentVolumeClaim:
+            claimName: shared-home-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-fpm-service
+spec:
+  selector:
+    app: php-fpm
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+---
+# --------------------------------------------------------
+# WebApp Deployment + Service (nginx 기능 대체)
+# -> static + .php 요청 전달 (php-fpm 연결을 가정)
+# --------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+        - name: webapp
+          image: nginx:1.27.5
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: shared-home
+              mountPath: /var/www/html
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: shared-home
+          persistentVolumeClaim:
+            claimName: shared-home-pvc
+        - name: nginx-config
+          configMap:
+            name: webapp-nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+spec:
+  selector:
+    app: webapp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+# --------------------------------------------------------
+# NGINX ConfigMap for WebApp (proxy → php-fpm)
+# --------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-nginx-config
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+        root /var/www/html;
+        index index.php index.html;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass php-fpm-service:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME /var/www/html$fastcgi_script_name;
+        }
+    }
+---
+# --------------------------------------------------------
+# Ingress Resource
+# --------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: php-app-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: myapp.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: webapp-service
+                port:
+                  number: 80

@@ -12,7 +12,7 @@ data:
       access_log  /var/log/nginx/host.access.log;
       error_log  /var/log/nginx/host.error.log;
 
-      root   /home/pondol/example-app/public;
+      root   /home/pondol/example-app/public; # <-- /var/www/html;
       index   index.php index.html index.htm;
 
       location / {

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: shared-files-pvc
+  name: shared-home-pvc
 spec:
   accessModes:
     - ReadWriteMany
@@ -47,9 +47,9 @@ spec:
         fsGroup: 1000
         runAsUser: 0
       volumes:
-        - name: shared-files
+        - name: shared-home
           persistentVolumeClaim:
-            claimName: shared-files-pvc
+            claimName: shared-home-pvc
         - name: nginx-main-config
           configMap:
             name: nginx-main-config
@@ -63,7 +63,7 @@ spec:
             - containerPort: 80
               name: http
           volumeMounts:
-            - name: shared-files
+            - name: shared-home
               mountPath: /home
             - name: nginx-main-config
               mountPath: /etc/nginx/nginx.conf
@@ -77,11 +77,11 @@ spec:
             - containerPort: 22
               name: ssh
           volumeMounts:
-            - name: shared-files
+            - name: shared-home
               mountPath: /home
         - name: phpfpm82
           image: php-8-2-fpm:latest
           imagePullPolicy: Never
           volumeMounts:
-            - name: shared-files
+            - name: shared-home
               mountPath: /home

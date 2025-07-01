@@ -1,0 +1,242 @@
+# -----------------------------
+# PVC: shared /home
+# -----------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-home-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+# -----------------------------
+# php-fpm Deployment + Service
+# -----------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-fpm-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: php-fpm
+  template:
+    metadata:
+      labels:
+        app: php-fpm
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 0
+      containers:
+        - name: php-fpm
+          image: php-8-2-fpm:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - name: shared-home
+              mountPath: /home
+      volumes:
+        - name: shared-home
+          persistentVolumeClaim:
+            claimName: shared-home-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-fpm-service
+spec:
+  selector:
+    app: php-fpm
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+---
+# -----------------------------
+# NGINX ConfigMap
+# -----------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  default.conf: | #키명 = 파일명, |은 밸류가 멀티라인이라는 뜻
+    server {
+      listen       80;
+      listen  [::]:80;
+      server_name  localhost;
+
+      access_log  /var/log/nginx/host.access.log;
+      error_log  /var/log/nginx/host.error.log;
+
+      root   /home/pondol/example-app/public; # <-- /var/www/html;
+      index   index.php index.html index.htm;
+
+      location / {
+        try_files $uri $uri/ /index.php?$query_string;
+      }
+
+      location ~ \.php$ {
+        
+        fastcgi_pass   php-fpm-service:9000;
+        fastcgi_param REQUEST_METHOD $request_method;
+        # fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include        fastcgi_params;
+      }
+    }
+---
+# -----------------------------
+# nginx-main-config (nginx.conf)
+# -----------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-main-config
+data:
+  nginx.conf: |
+    user  www-data;
+    worker_processes  auto;
+
+    error_log  /var/log/nginx/error.log notice;
+    pid        /run/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log  /var/log/nginx/access.log  main;
+
+        sendfile        on;
+        #tcp_nopush     on;
+
+        keepalive_timeout  65;
+
+        #gzip  on;
+
+        include /etc/nginx/conf.d/*.conf;
+    }
+---
+# -----------------------------
+# NGINX Deployment + Service
+# -----------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 0
+      containers:
+        - name: nginx
+          image: nginx:1.27.5
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: shared-home
+              mountPath: /home
+            - name: nginx-main-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: shared-home
+          persistentVolumeClaim:
+            claimName: shared-home-pvc
+        - name: nginx-main-config
+          configMap:
+            name: nginx-main-config
+        - name: nginx-config-volume
+          configMap:
+            name: nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  type: NodePort
+  selector:
+    app: nginx
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+---
+# -----------------------------
+# SSH (SFTP) Deployment + Service
+# -----------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ssh
+  template:
+    metadata:
+      labels:
+        app: ssh
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 0
+      containers:
+        - name: ssh
+          image: pondol/ssh-sftp-custom:latest
+          ports:
+            - containerPort: 22
+              name: ssh
+          volumeMounts:
+            - name: shared-home
+              mountPath: /home
+      volumes:
+        - name: shared-home
+          persistentVolumeClaim:
+            claimName: shared-home-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-service
+spec:
+  type: NodePort
+  selector:
+    app: ssh
+  ports:
+    - name: ssh
+      protocol: TCP
+      port: 22
+      targetPort: 22
+      nodePort: 30222
